@@ -1,0 +1,28 @@
+name: Install Tree Utility
+
+on:
+  workflow_dispatch:  # Allows manual triggering
+  push:               # Runs on every push
+
+jobs:
+  install-tree:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Update package index
+        run: sudo apt update
+
+      - name: Install latest version of tree
+        run: sudo apt install -y tree
+
+      - name: Verify installation
+        run: |
+          tree --version
+          tree .
+
+      - name: 🎉 Done!
+        run: echo "Tree installed and verified successfully. Workflow complete! 🌳✅"
+
+
