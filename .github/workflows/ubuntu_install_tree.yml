@@ -1,0 +1,105 @@
+name: Install and Test Utilities
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - develop
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  install-utilities:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4  # Updated to v4
+      
+      - name: Cache apt packages
+        uses: actions/cache@v3
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-${{ hashFiles('**/workflow.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-
+      
+      - name: Update package index and upgrade
+        run: |
+          sudo apt-get update
+          sudo apt-get upgrade -y
+      
+      - name: Install utilities
+        run: |
+          sudo apt-get install -y \
+            tree \
+            curl \
+            jq \
+            wget
+      
+      - name: Verify installations
+        run: |
+          echo "=== Tree Version ==="
+          tree --version
+          echo ""
+          echo "=== Directory Structure ==="
+          tree -L 2 .
+          echo ""
+          echo "=== Curl Version ==="
+          curl --version | head -n 1
+          echo ""
+          echo "=== jq Version ==="
+          jq --version
+          echo ""
+          echo "=== Wget Version ==="
+          wget --version | head -n 1
+      
+      - name: Run basic functionality tests
+        run: |
+          # Test tree output can be captured
+          tree . > tree_output.txt
+          if [ -s tree_output.txt ]; then
+            echo "✅ Tree output captured successfully"
+          else
+            echo "❌ Tree output failed"
+            exit 1
+          fi
+          
+          # Test jq parsing
+          echo '{"status":"success"}' | jq -e '.status == "success"'
+          echo "✅ jq parsing works"
+          
+          # Test curl
+          curl -sf https://api.github.com/zen > /dev/null
+          echo "✅ curl connectivity works"
+      
+      - name: Upload tree output as artifact
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: tree-output
+          path: tree_output.txt
+          retention-days: 7
+      
+      - name: 🎉 Summary
+        if: success()
+        run: |
+          echo "### ✅ Workflow Complete! 🌳" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All utilities installed and verified successfully:" >> $GITHUB_STEP_SUMMARY
+          echo "- tree" >> $GITHUB_STEP_SUMMARY
+          echo "- curl" >> $GITHUB_STEP_SUMMARY
+          echo "- jq" >> $GITHUB_STEP_SUMMARY
+          echo "- wget" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "### ❌ Workflow Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Check the logs above for details." >> $GITHUB_STEP_SUMMARY
