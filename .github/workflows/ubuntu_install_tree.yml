@@ -38,85 +38,91 @@ jobs:
         id: install
         continue-on-error: true
         run: |
-          echo "INSTALLED=" >> $GITHUB_ENV
-          echo "FAILED=" >> $GITHUB_ENV
+          INSTALLED=""
+          FAILED=""
           
           # Try to install each package individually and track results
           for package in tree curl jq wget; do
             echo "Installing $package..."
             if sudo apt-get install -y $package 2>&1 | tee /tmp/${package}_install.log; then
-              echo "INSTALLED=$INSTALLED $package" >> $GITHUB_ENV
+              INSTALLED="$INSTALLED $package"
               echo "✅ $package installed successfully"
             else
-              echo "FAILED=$FAILED $package" >> $GITHUB_ENV
+              FAILED="$FAILED $package"
               echo "❌ $package installation failed"
             fi
           done
+          
+          echo "INSTALLED=$INSTALLED" >> $GITHUB_ENV
+          echo "FAILED=$FAILED" >> $GITHUB_ENV
       
       - name: Verify installations
         id: verify
         continue-on-error: true
         run: |
-          echo "VERIFIED=" >> $GITHUB_ENV
-          echo "VERIFY_FAILED=" >> $GITHUB_ENV
+          VERIFIED=""
+          VERIFY_FAILED=""
           
           echo "=== Verification Results ==="
           
           # Tree
           if command -v tree &> /dev/null; then
             echo "✅ Tree: $(tree --version | head -n 1)"
-            echo "VERIFIED=$VERIFIED tree" >> $GITHUB_ENV
+            VERIFIED="$VERIFIED tree"
             tree -L 2 .
           else
             echo "❌ Tree: Not found"
-            echo "VERIFY_FAILED=$VERIFY_FAILED tree" >> $GITHUB_ENV
+            VERIFY_FAILED="$VERIFY_FAILED tree"
           fi
           echo ""
           
           # Curl
           if command -v curl &> /dev/null; then
             echo "✅ Curl: $(curl --version | head -n 1)"
-            echo "VERIFIED=$VERIFIED curl" >> $GITHUB_ENV
+            VERIFIED="$VERIFIED curl"
           else
             echo "❌ Curl: Not found"
-            echo "VERIFY_FAILED=$VERIFY_FAILED curl" >> $GITHUB_ENV
+            VERIFY_FAILED="$VERIFY_FAILED curl"
           fi
           echo ""
           
           # jq
           if command -v jq &> /dev/null; then
             echo "✅ jq: $(jq --version)"
-            echo "VERIFIED=$VERIFIED jq" >> $GITHUB_ENV
+            VERIFIED="$VERIFIED jq"
           else
             echo "❌ jq: Not found"
-            echo "VERIFY_FAILED=$VERIFY_FAILED jq" >> $GITHUB_ENV
+            VERIFY_FAILED="$VERIFY_FAILED jq"
           fi
           echo ""
           
           # Wget
           if command -v wget &> /dev/null; then
             echo "✅ Wget: $(wget --version | head -n 1)"
-            echo "VERIFIED=$VERIFIED wget" >> $GITHUB_ENV
+            VERIFIED="$VERIFIED wget"
           else
             echo "❌ Wget: Not found"
-            echo "VERIFY_FAILED=$VERIFY_FAILED wget" >> $GITHUB_ENV
+            VERIFY_FAILED="$VERIFY_FAILED wget"
           fi
+          
+          echo "VERIFIED=$VERIFIED" >> $GITHUB_ENV
+          echo "VERIFY_FAILED=$VERIFY_FAILED" >> $GITHUB_ENV
       
       - name: Run basic functionality tests
         id: tests
         continue-on-error: true
         run: |
-          echo "TESTS_PASSED=" >> $GITHUB_ENV
-          echo "TESTS_FAILED=" >> $GITHUB_ENV
+          TESTS_PASSED=""
+          TESTS_FAILED=""
           
           # Test tree output can be captured
           if command -v tree &> /dev/null; then
             if tree . > tree_output.txt && [ -s tree_output.txt ]; then
               echo "✅ Tree output captured successfully"
-              echo "TESTS_PASSED=$TESTS_PASSED tree" >> $GITHUB_ENV
+              TESTS_PASSED="$TESTS_PASSED tree"
             else
               echo "❌ Tree output failed"
-              echo "TESTS_FAILED=$TESTS_FAILED tree" >> $GITHUB_ENV
+              TESTS_FAILED="$TESTS_FAILED tree"
             fi
           fi
           
@@ -124,10 +130,10 @@ jobs:
           if command -v jq &> /dev/null; then
             if echo '{"status":"success"}' | jq -e '.status == "success"' > /dev/null 2>&1; then
               echo "✅ jq parsing works"
-              echo "TESTS_PASSED=$TESTS_PASSED jq" >> $GITHUB_ENV
+              TESTS_PASSED="$TESTS_PASSED jq"
             else
               echo "❌ jq parsing failed"
-              echo "TESTS_FAILED=$TESTS_FAILED jq" >> $GITHUB_ENV
+              TESTS_FAILED="$TESTS_FAILED jq"
             fi
           fi
           
@@ -135,12 +141,15 @@ jobs:
           if command -v curl &> /dev/null; then
             if curl -sf https://api.github.com/zen > /dev/null; then
               echo "✅ curl connectivity works"
-              echo "TESTS_PASSED=$TESTS_PASSED curl" >> $GITHUB_ENV
+              TESTS_PASSED="$TESTS_PASSED curl"
             else
               echo "❌ curl connectivity failed"
-              echo "TESTS_FAILED=$TESTS_FAILED curl" >> $GITHUB_ENV
+              TESTS_FAILED="$TESTS_FAILED curl"
             fi
           fi
+          
+          echo "TESTS_PASSED=$TESTS_PASSED" >> $GITHUB_ENV
+          echo "TESTS_FAILED=$TESTS_FAILED" >> $GITHUB_ENV
       
       - name: Upload tree output as artifact
         uses: actions/upload-artifact@v4
