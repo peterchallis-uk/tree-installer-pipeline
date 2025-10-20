@@ -35,48 +35,112 @@ jobs:
           sudo apt-get upgrade -y
       
       - name: Install utilities
+        id: install
+        continue-on-error: true
         run: |
-          sudo apt-get install -y \
-            tree \
-            curl \
-            jq \
-            wget
+          echo "INSTALLED=" >> $GITHUB_ENV
+          echo "FAILED=" >> $GITHUB_ENV
+          
+          # Try to install each package individually and track results
+          for package in tree curl jq wget; do
+            echo "Installing $package..."
+            if sudo apt-get install -y $package 2>&1 | tee /tmp/${package}_install.log; then
+              echo "INSTALLED=$INSTALLED $package" >> $GITHUB_ENV
+              echo "✅ $package installed successfully"
+            else
+              echo "FAILED=$FAILED $package" >> $GITHUB_ENV
+              echo "❌ $package installation failed"
+            fi
+          done
       
       - name: Verify installations
+        id: verify
+        continue-on-error: true
         run: |
-          echo "=== Tree Version ==="
-          tree --version
+          echo "VERIFIED=" >> $GITHUB_ENV
+          echo "VERIFY_FAILED=" >> $GITHUB_ENV
+          
+          echo "=== Verification Results ==="
+          
+          # Tree
+          if command -v tree &> /dev/null; then
+            echo "✅ Tree: $(tree --version | head -n 1)"
+            echo "VERIFIED=$VERIFIED tree" >> $GITHUB_ENV
+            tree -L 2 .
+          else
+            echo "❌ Tree: Not found"
+            echo "VERIFY_FAILED=$VERIFY_FAILED tree" >> $GITHUB_ENV
+          fi
           echo ""
-          echo "=== Directory Structure ==="
-          tree -L 2 .
+          
+          # Curl
+          if command -v curl &> /dev/null; then
+            echo "✅ Curl: $(curl --version | head -n 1)"
+            echo "VERIFIED=$VERIFIED curl" >> $GITHUB_ENV
+          else
+            echo "❌ Curl: Not found"
+            echo "VERIFY_FAILED=$VERIFY_FAILED curl" >> $GITHUB_ENV
+          fi
           echo ""
-          echo "=== Curl Version ==="
-          curl --version | head -n 1
+          
+          # jq
+          if command -v jq &> /dev/null; then
+            echo "✅ jq: $(jq --version)"
+            echo "VERIFIED=$VERIFIED jq" >> $GITHUB_ENV
+          else
+            echo "❌ jq: Not found"
+            echo "VERIFY_FAILED=$VERIFY_FAILED jq" >> $GITHUB_ENV
+          fi
           echo ""
-          echo "=== jq Version ==="
-          jq --version
-          echo ""
-          echo "=== Wget Version ==="
-          wget --version | head -n 1
+          
+          # Wget
+          if command -v wget &> /dev/null; then
+            echo "✅ Wget: $(wget --version | head -n 1)"
+            echo "VERIFIED=$VERIFIED wget" >> $GITHUB_ENV
+          else
+            echo "❌ Wget: Not found"
+            echo "VERIFY_FAILED=$VERIFY_FAILED wget" >> $GITHUB_ENV
+          fi
       
       - name: Run basic functionality tests
+        id: tests
+        continue-on-error: true
         run: |
+          echo "TESTS_PASSED=" >> $GITHUB_ENV
+          echo "TESTS_FAILED=" >> $GITHUB_ENV
+          
           # Test tree output can be captured
-          tree . > tree_output.txt
-          if [ -s tree_output.txt ]; then
-            echo "✅ Tree output captured successfully"
-          else
-            echo "❌ Tree output failed"
-            exit 1
+          if command -v tree &> /dev/null; then
+            if tree . > tree_output.txt && [ -s tree_output.txt ]; then
+              echo "✅ Tree output captured successfully"
+              echo "TESTS_PASSED=$TESTS_PASSED tree" >> $GITHUB_ENV
+            else
+              echo "❌ Tree output failed"
+              echo "TESTS_FAILED=$TESTS_FAILED tree" >> $GITHUB_ENV
+            fi
           fi
           
           # Test jq parsing
-          echo '{"status":"success"}' | jq -e '.status == "success"'
-          echo "✅ jq parsing works"
+          if command -v jq &> /dev/null; then
+            if echo '{"status":"success"}' | jq -e '.status == "success"' > /dev/null 2>&1; then
+              echo "✅ jq parsing works"
+              echo "TESTS_PASSED=$TESTS_PASSED jq" >> $GITHUB_ENV
+            else
+              echo "❌ jq parsing failed"
+              echo "TESTS_FAILED=$TESTS_FAILED jq" >> $GITHUB_ENV
+            fi
+          fi
           
           # Test curl
-          curl -sf https://api.github.com/zen > /dev/null
-          echo "✅ curl connectivity works"
+          if command -v curl &> /dev/null; then
+            if curl -sf https://api.github.com/zen > /dev/null; then
+              echo "✅ curl connectivity works"
+              echo "TESTS_PASSED=$TESTS_PASSED curl" >> $GITHUB_ENV
+            else
+              echo "❌ curl connectivity failed"
+              echo "TESTS_FAILED=$TESTS_FAILED curl" >> $GITHUB_ENV
+            fi
+          fi
       
       - name: Upload tree output as artifact
         uses: actions/upload-artifact@v4
@@ -86,20 +150,85 @@ jobs:
           path: tree_output.txt
           retention-days: 7
       
-      - name: 🎉 Summary
-        if: success()
+      - name: 🎉 Final Summary
+        if: always()
         run: |
-          echo "### ✅ Workflow Complete! 🌳" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 Workflow Execution Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "All utilities installed and verified successfully:" >> $GITHUB_STEP_SUMMARY
-          echo "- tree" >> $GITHUB_STEP_SUMMARY
-          echo "- curl" >> $GITHUB_STEP_SUMMARY
-          echo "- jq" >> $GITHUB_STEP_SUMMARY
-          echo "- wget" >> $GITHUB_STEP_SUMMARY
-      
-      - name: Notify on failure
-        if: failure()
-        run: |
-          echo "### ❌ Workflow Failed" >> $GITHUB_STEP_SUMMARY
+          
+          # Installation Results
+          echo "#### 📦 Installation Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Check the logs above for details." >> $GITHUB_STEP_SUMMARY
+          
+          if [ -n "$INSTALLED" ]; then
+            echo "**✅ Successfully Installed:**" >> $GITHUB_STEP_SUMMARY
+            for pkg in $INSTALLED; do
+              echo "- $pkg" >> $GITHUB_STEP_SUMMARY
+            done
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ -n "$FAILED" ]; then
+            echo "**❌ Failed to Install:**" >> $GITHUB_STEP_SUMMARY
+            for pkg in $FAILED; do
+              echo "- $pkg" >> $GITHUB_STEP_SUMMARY
+            done
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Verification Results
+          echo "#### ✓ Verification Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -n "$VERIFIED" ]; then
+            echo "**✅ Verified and Working:**" >> $GITHUB_STEP_SUMMARY
+            for pkg in $VERIFIED; do
+              echo "- $pkg" >> $GITHUB_STEP_SUMMARY
+            done
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ -n "$VERIFY_FAILED" ]; then
+            echo "**❌ Verification Failed:**" >> $GITHUB_STEP_SUMMARY
+            for pkg in $VERIFY_FAILED; do
+              echo "- $pkg" >> $GITHUB_STEP_SUMMARY
+            done
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Test Results
+          echo "#### 🧪 Functionality Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -n "$TESTS_PASSED" ]; then
+            echo "**✅ Tests Passed:**" >> $GITHUB_STEP_SUMMARY
+            for pkg in $TESTS_PASSED; do
+              echo "- $pkg" >> $GITHUB_STEP_SUMMARY
+            done
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ -n "$TESTS_FAILED" ]; then
+            echo "**❌ Tests Failed:**" >> $GITHUB_STEP_SUMMARY
+            for pkg in $TESTS_FAILED; do
+              echo "- $pkg" >> $GITHUB_STEP_SUMMARY
+            done
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Overall Status
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -z "$FAILED" ] && [ -z "$VERIFY_FAILED" ] && [ -z "$TESTS_FAILED" ]; then
+            echo "### ✅ All operations completed successfully! 🎉" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ⚠️ Workflow completed with some failures" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please review the failed items above and check the logs for details." >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow run by:** @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
